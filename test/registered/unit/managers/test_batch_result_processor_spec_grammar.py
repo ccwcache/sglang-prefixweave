@@ -69,6 +69,7 @@ def _make_processor() -> SchedulerBatchResultProcessor:
         logprob_result_processor=None,
         output_streamer=SimpleNamespace(),
         abort_request=lambda *a, **k: None,
+        policy=SimpleNamespace(update_finished_reqs_info=lambda req: None),
     )
 
 

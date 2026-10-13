@@ -1041,6 +1041,8 @@ class Scheduler(
             self.enable_hierarchical_cache,
             self.enable_priority_scheduling,
             self.schedule_low_priority_values_first,
+            self.chunked_prefill_size,
+            self.max_prefill_tokens,
         )
         self.prefill_delayer: Optional[PrefillDelayer] = None
         self.max_prefill_bs: int = 0
@@ -1880,6 +1882,7 @@ class Scheduler(
             ),
             output_streamer=self.output_streamer,
             abort_request=self.abort_request,
+            policy=self.policy,
         )
 
     def init_req_max_new_tokens(self, req):
@@ -2895,9 +2898,6 @@ class Scheduler(
             running_batch.batch_is_full = True
             return None, running_batch
 
-        # Get priority queue
-        self.policy.calc_priority(self.waiting_queue, running_batch)
-
         if TEST_RETRACT and running_bs > TEST_RETRACT_NO_PREFILL_BS:
             # If we are testing retraction and the running batch size exceeds
             # TEST_RETRACT_NO_PREFILL_BS, we skip the prefill to keep the requests
@@ -2934,6 +2934,23 @@ class Scheduler(
         if self.chunked_req is not None:
             self.chunked_req.init_next_round_input()
             self.chunked_req = adder.add_chunked_req(self.chunked_req)
+
+        # Calc max req_num and token budget for calc_priority
+        max_req_num = self.get_num_allocatable_reqs(running_bs) - len(
+            adder.can_run_list
+        )
+        token_budget = min(
+            adder.rem_input_tokens,
+            adder.rem_total_tokens,
+            adder.cur_rem_tokens,
+        )
+        if adder.rem_chunk_tokens is not None:
+            token_budget = min(token_budget, adder.rem_chunk_tokens)
+
+        # Get priority queue
+        self.policy.calc_priority(
+            self.waiting_queue, running_batch, max_req_num, token_budget
+        )
 
         if self.enable_lora:
             running_loras = {
@@ -3027,6 +3044,8 @@ class Scheduler(
         can_run_list: List[Req] = adder.can_run_list
         if len(can_run_list) == 0:
             return None, running_batch
+
+        self.policy.update_classified_reqs(can_run_list)
 
         can_run_set = set(can_run_list)
         self.waiting_queue = [x for x in self.waiting_queue if x not in can_run_set]

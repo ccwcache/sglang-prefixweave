@@ -1192,6 +1192,7 @@ class TestMlxOverlapScheduler(unittest.TestCase):
             logprob_result_processor=None,
             output_streamer=None,
             abort_request=lambda req: None,
+            policy=SimpleNamespace(update_finished_reqs_info=lambda req: None),
         )
         # Stub out the methods _handle_finish_state_updated_req calls that
         # are not relevant to this test.  SchedulerBatchResultProcessor is
